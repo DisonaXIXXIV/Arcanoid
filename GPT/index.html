@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080b18" />
+    <title>Неон Арканоид</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.11.10/lib/p5.min.js"></script>
+  </head>
+  <body>
+    <main class="app-shell" aria-label="Игра Неон Арканоид">
+      <header class="brand-bar">
+        <a class="brand" href="#" aria-label="На главный экран">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span>NEON // ARK</span>
+        </a>
+        <div class="sound-hint">P — пауза · M — звук: вкл</div>
+      </header>
+
+      <section id="game-container" aria-label="Игровое поле"></section>
+
+      <footer>
+        <span>← →</span> двигаться
+        <i></i>
+        <span>ПРОБЕЛ</span> запустить шар
+      </footer>
+    </main>
+    <script src="sketch.js"></script>
+  </body>
+</html>
