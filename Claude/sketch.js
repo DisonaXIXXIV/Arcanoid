@@ -1,6 +1,8 @@
 // Арканоид на p5.js
-// Управление: стрелки влево/вправо — движение платформы, пробел — запуск мяча,
-// стрелки вверх/вниз + Enter — навигация по меню, Esc — пауза.
+// Клавиатура: стрелки влево/вправо — движение платформы, пробел — запуск мяча,
+// стрелки вверх/вниз + Enter — навигация по меню, Esc — пауза, M — звук.
+// Сенсорный экран: ведение пальцем — движение платформы, отпускание пальца —
+// запуск мяча, тап по пунктам меню и экранным кнопкам (пауза и звук в углах).
 
 const W = 640;
 const H = 480;
@@ -114,10 +116,38 @@ const POWERUPS = {
 let fallingPowerups = []; // капсулы, которые ещё падают
 let activeEffects = {};   // тип -> оставшееся время (мс)
 
+let canvasEl = null;
+
 function setup() {
-  createCanvas(W, H);
+  canvasEl = createCanvas(W, H).elt;
+  pixelDensity(min(window.devicePixelRatio || 1, 2));
   textFont('monospace');
+  TouchInput.attach(canvasEl);
+  fitCanvas();
+  window.addEventListener('orientationchange', () => setTimeout(fitCanvas, 300));
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', fitCanvas);
   resetGame();
+}
+
+// Игра всегда рисуется в координатах W x H, а на экране холст растягивается
+// под окно с сохранением пропорций — так поле целиком помещается на телефоне.
+function fitCanvas() {
+  if (!canvasEl) return;
+  const vw = (window.visualViewport && window.visualViewport.width) || window.innerWidth;
+  const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+  const scale = min(vw / W, vh / H);
+  canvasEl.style.width = `${W * scale}px`;
+  canvasEl.style.height = `${H * scale}px`;
+}
+
+function windowResized() {
+  fitCanvas();
+}
+
+// Платформа центрируется по пальцу (или курсору)
+function movePaddleTo(x) {
+  if (!paddle) return;
+  paddle.x = constrain(x - paddle.w / 2, 0, W - paddle.w);
 }
 
 function resetGame() {
@@ -380,12 +410,19 @@ function draw() {
   switch (state) {
     case STATE.MENU: drawMenu(); break;
     case STATE.PLAY: updateGame(); drawGame(); break;
-    case STATE.PAUSE: drawGame(); drawOverlay('ПАУЗА', 'Esc — продолжить, Enter — в меню'); break;
-    case STATE.GAMEOVER: drawGame(); drawOverlay('ИГРА ОКОНЧЕНА', `Очки: ${score}   Enter — в меню`); break;
-    case STATE.WIN: drawGame(); drawOverlay('УРОВЕНЬ ПРОЙДЕН!', `Очки: ${score}   Enter — уровень ${level + 1}`); break;
-    case STATE.VICTORY: drawGame(); drawOverlay('ПОБЕДА!', `Все ${LEVELS.length} уровней пройдены. Очки: ${score}   Enter — в меню`); break;
+    case STATE.PAUSE: drawGame(); drawOverlay('ПАУЗА', hint('', 'Esc — продолжить, Enter — в меню')); break;
+    case STATE.GAMEOVER: drawGame(); drawOverlay('ИГРА ОКОНЧЕНА', hint(`Очки: ${score}`, 'Enter — в меню')); break;
+    case STATE.WIN: drawGame(); drawOverlay('УРОВЕНЬ ПРОЙДЕН!', hint(`Очки: ${score}`, `Enter — уровень ${level + 1}`)); break;
+    case STATE.VICTORY: drawGame(); drawOverlay('ПОБЕДА!', hint(`Все ${LEVELS.length} уровней пройдены. Очки: ${score}`, 'Enter — в меню')); break;
     case STATE.EXIT: drawExit(); break;
   }
+  drawUiButtons();
+}
+
+// На сенсорном экране вместо подсказок про клавиши работают экранные кнопки
+function hint(info, keys) {
+  if (TouchInput.isTouch()) return info;
+  return info ? `${info}   ${keys}` : keys;
 }
 
 // ---------- Меню ----------
@@ -439,7 +476,12 @@ function drawMenu() {
 
   fill(120);
   textSize(14);
-  text('← → — движение   Пробел — запуск   Esc — пауза   M — звук', W / 2, H - 30);
+  text(
+    TouchInput.isTouch()
+      ? 'Тап — выбор   Ведите пальцем — платформа   Отпустить — запуск'
+      : '← → — движение   Пробел — запуск   Esc — пауза   M — звук',
+    W / 2, H - 30
+  );
 }
 
 function drawExit() {
@@ -449,7 +491,7 @@ function drawExit() {
   text('Спасибо за игру!', W / 2, H / 2 - 20);
   textSize(16);
   fill(120);
-  text('Enter — вернуться в меню', W / 2, H / 2 + 24);
+  text(hint('', 'Enter — вернуться в меню'), W / 2, H / 2 + 24);
 }
 
 // ---------- Игра ----------
@@ -663,27 +705,20 @@ function drawGame() {
   fill(255);
   textSize(16);
   textAlign(LEFT, TOP);
-  text(`Очки: ${score}`, 12, 10);
+  text(`Очки: ${score}`, BTN_MARGIN * 2 + BTN_SIZE, 10);
   textAlign(CENTER, TOP);
   text(`Уровень ${level}/${LEVELS.length}`, W / 2, 10);
   textAlign(RIGHT, TOP);
-  text('Жизни: ' + '●'.repeat(lives), W - 12, 10);
+  text('Жизни: ' + '●'.repeat(lives), W - BTN_MARGIN * 2 - BTN_SIZE, 10);
 
   // HUD — вторая строка: активные бонусы
   drawActiveEffects();
-
-  if (Sfx.isMuted()) {
-    fill(120);
-    textSize(12);
-    textAlign(LEFT, BOTTOM);
-    text('звук выкл (M)', 8, H - 6);
-  }
 
   if (state === STATE.PLAY && !ball.launched) {
     fill(160);
     textSize(14);
     textAlign(CENTER, CENTER);
-    text('Пробел — запустить мяч', W / 2, H / 2 + 40);
+    text(TouchInput.isTouch() ? 'Коснитесь поля и отпустите — запуск мяча' : 'Пробел — запустить мяч', W / 2, H / 2 + 40);
   }
 }
 
@@ -740,11 +775,154 @@ function drawOverlay(title, subtitle) {
   text(subtitle, W / 2, H / 2 + 24);
 }
 
+// ---------- Экранные кнопки ----------
+// Прямоугольники кнопок описаны в одном месте: по ним и рисуем, и ловим касания.
+
+const BTN_SIZE = 44;   // размер кнопки, комфортный для пальца
+const BTN_MARGIN = 8;
+
+function uiButtons() {
+  const list = [];
+
+  // Пункты меню — невидимые области поверх текста
+  if (state === STATE.MENU) {
+    for (let i = 0; i < menuItems.length; i++) {
+      list.push({
+        x: W / 2 - 130, y: 160 + i * 42 - 21, w: 260, h: 42,
+        hitOnly: true,
+        action: () => { menuIndex = i; confirmAction(); },
+      });
+    }
+  }
+
+  // Пауза — только во время игры: из паузы выходят кнопками оверлея
+  if (state === STATE.PLAY) {
+    list.push({
+      x: BTN_MARGIN, y: BTN_MARGIN, w: BTN_SIZE, h: BTN_SIZE,
+      icon: 'pause',
+      action: togglePause,
+    });
+  }
+
+  // Звук — на всех экранах, кроме экрана выхода
+  if (state !== STATE.EXIT) {
+    list.push({
+      x: W - BTN_MARGIN - BTN_SIZE, y: BTN_MARGIN, w: BTN_SIZE, h: BTN_SIZE,
+      icon: 'sound',
+      action: () => { Sfx.toggleMute(); Sfx.play('menuSelect'); },
+    });
+  }
+
+  // Кнопки поверх затемнения
+  const overlay = {
+    [STATE.PAUSE]: [['Продолжить', togglePause], ['В меню', confirmAction]],
+    [STATE.WIN]: [['Дальше', confirmAction]],
+    [STATE.GAMEOVER]: [['В меню', confirmAction]],
+    [STATE.VICTORY]: [['В меню', confirmAction]],
+    [STATE.EXIT]: [['В меню', confirmAction]],
+  }[state];
+  if (overlay) {
+    const w = 180, h = 46, gap = 16;
+    let x = W / 2 - (overlay.length * (w + gap) - gap) / 2;
+    for (const [label, action] of overlay) {
+      list.push({ x, y: H / 2 + 58, w, h, label, action });
+      x += w + gap;
+    }
+  }
+
+  return list;
+}
+
+function drawUiButtons() {
+  const held = TouchInput.heldButton();
+  for (const b of uiButtons()) {
+    if (b.hitOnly) continue;
+    drawButton(b, !!held && held.x === b.x && held.y === b.y);
+  }
+}
+
+function drawButton(b, active) {
+  push();
+  noStroke();
+  fill(255, 255, 255, active ? 60 : 24);
+  rect(b.x, b.y, b.w, b.h, 8);
+  noFill();
+  stroke(active ? 240 : 150);
+  strokeWeight(1.5);
+  rect(b.x, b.y, b.w, b.h, 8);
+
+  const cx = b.x + b.w / 2;
+  const cy = b.y + b.h / 2;
+  noStroke();
+  fill(active ? 255 : 225);
+  if (b.label) {
+    textSize(16);
+    textAlign(CENTER, CENTER);
+    text(b.label, cx, cy + 1);
+  } else if (b.icon === 'pause') {
+    rect(cx - 7, cy - 9, 5, 18, 1);
+    rect(cx + 2, cy - 9, 5, 18, 1);
+  } else if (b.icon === 'sound') {
+    drawSoundIcon(cx, cy, active ? 255 : 225);
+  }
+  pop();
+}
+
+// Динамик: со звуковыми волнами или перечёркнутый, если звук выключен
+function drawSoundIcon(cx, cy, c) {
+  noStroke();
+  fill(c);
+  rect(cx - 12, cy - 4, 6, 8);
+  triangle(cx - 6, cy, cx - 1, cy - 9, cx - 1, cy + 9);
+
+  noFill();
+  stroke(c);
+  strokeWeight(2);
+  if (Sfx.isMuted()) {
+    line(cx + 4, cy - 6, cx + 13, cy + 3);
+    line(cx + 13, cy - 6, cx + 4, cy + 3);
+  } else {
+    arc(cx, cy, 14, 16, -PI / 3, PI / 3);
+    arc(cx, cy, 24, 26, -PI / 3, PI / 3);
+  }
+}
+
 // ---------- Ввод ----------
+
+// Подтверждение: Enter с клавиатуры, кнопка оверлея или тап по экрану
+function confirmAction() {
+  Sfx.play('menuSelect');
+  switch (state) {
+    case STATE.MENU:
+      if (menuIndex === 0) { resetGame(); state = STATE.PLAY; }
+      else state = STATE.EXIT;
+      break;
+    case STATE.WIN:
+      level++;
+      startLevel();
+      state = STATE.PLAY;
+      break;
+    case STATE.PAUSE:
+    case STATE.GAMEOVER:
+    case STATE.VICTORY:
+    case STATE.EXIT:
+      state = STATE.MENU;
+      break;
+  }
+}
+
+function togglePause() {
+  if (state === STATE.PLAY) state = STATE.PAUSE;
+  else if (state === STATE.PAUSE) state = STATE.PLAY;
+  else return;
+  TouchInput.reset(); // палец мог вести платформу до паузы
+  Sfx.play('menuMove');
+}
 
 function keyPressed() {
   // Аудиоконтекст можно создать только после действия пользователя
   Sfx.init();
+  TouchInput.noteKeyboard();
 
   if (key === 'm' || key === 'M' || key === 'ь' || key === 'Ь') {
     Sfx.toggleMute();
@@ -755,37 +933,24 @@ function keyPressed() {
     case STATE.MENU:
       if (keyCode === UP_ARROW) { menuIndex = (menuIndex - 1 + menuItems.length) % menuItems.length; Sfx.play('menuMove'); }
       else if (keyCode === DOWN_ARROW) { menuIndex = (menuIndex + 1) % menuItems.length; Sfx.play('menuMove'); }
-      else if (keyCode === ENTER) {
-        Sfx.play('menuSelect');
-        if (menuIndex === 0) { resetGame(); state = STATE.PLAY; }
-        else state = STATE.EXIT;
-      }
+      else if (keyCode === ENTER) confirmAction();
       break;
 
     case STATE.PLAY:
       if (key === ' ') launchBall();
-      else if (keyCode === ESCAPE) state = STATE.PAUSE;
+      else if (keyCode === ESCAPE) togglePause();
       break;
 
     case STATE.PAUSE:
-      if (keyCode === ESCAPE) state = STATE.PLAY;
-      else if (keyCode === ENTER) state = STATE.MENU;
+      if (keyCode === ESCAPE) togglePause();
+      else if (keyCode === ENTER) confirmAction();
       break;
 
     case STATE.GAMEOVER:
-      if (keyCode === ENTER) state = STATE.MENU;
-      break;
-
     case STATE.WIN:
-      if (keyCode === ENTER) { level++; startLevel(); state = STATE.PLAY; }
-      break;
-
     case STATE.VICTORY:
-      if (keyCode === ENTER) state = STATE.MENU;
-      break;
-
     case STATE.EXIT:
-      if (keyCode === ENTER) state = STATE.MENU;
+      if (keyCode === ENTER) confirmAction();
       break;
   }
   // Не даём стрелкам/пробелу скроллить страницу
