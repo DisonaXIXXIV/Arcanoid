@@ -57,12 +57,15 @@ const MUSIC = {
 let paddle;
 let ball;
 let menuButtons = [];
+const INPUT = { pointerId: null, targetX: null, touch: false };
+let controls;
 
 function setup() {
   const canvas = createCanvas(GAME.width, GAME.height);
   canvas.parent("game-container");
   canvas.attribute("tabindex", "0");
   canvas.elt.addEventListener("contextmenu", (event) => event.preventDefault());
+  setupPointerControls(canvas.elt);
   pixelDensity(Math.min(window.devicePixelRatio || 1, 2));
   textFont("Manrope");
 
@@ -86,7 +89,7 @@ function draw() {
   if (GAME.state === "playing") drawGame();
   if (GAME.state === "paused") {
     drawGame(false);
-    drawOverlay("ПАУЗА", "Нажмите P, чтобы продолжить");
+    drawOverlay("ПАУЗА", INPUT.touch ? "Нажмите «Продолжить» под полем" : "Нажмите P, чтобы продолжить");
   }
   if (GAME.state === "levelcomplete") {
     drawGame(false);
@@ -103,6 +106,7 @@ function draw() {
   if (GAME.state === "exit") drawExitScreen();
 
   updateCursor();
+  updateTouchControls();
 }
 
 function drawBackground() {
@@ -200,6 +204,7 @@ function resetGame() {
 }
 
 function prepareLevel() {
+  clearPointerInput();
   GAME.powerUps = [];
   GAME.effects = { speed: 0, wide: 0, score: 0 };
   paddle = { x: width / 2, y: height - 54, w: 124, baseW: 124, h: 15, speed: 8.5 };
@@ -274,7 +279,7 @@ function drawGame(shouldUpdate = true) {
     textAlign(CENTER, CENTER);
     textSize(11);
     textStyle(BOLD);
-    text("ПРОБЕЛ — ЗАПУСТИТЬ", width / 2, height - 90);
+    text(INPUT.touch ? "НАЖМИТЕ «ЗАПУСТИТЬ» ПОД ПОЛЕМ" : "ПРОБЕЛ — ЗАПУСТИТЬ", width / 2, height - 90);
   }
 }
 
@@ -584,7 +589,12 @@ function movePaddle() {
   let direction = 0;
   if (keyIsDown(LEFT_ARROW)) direction -= 1;
   if (keyIsDown(RIGHT_ARROW)) direction += 1;
-  paddle.x += direction * paddle.speed;
+  if (direction !== 0) {
+    INPUT.targetX = null;
+    paddle.x += direction * paddle.speed;
+  } else if (INPUT.targetX !== null) {
+    paddle.x = INPUT.targetX;
+  }
   paddle.x = constrain(paddle.x, 22 + paddle.w / 2, width - 22 - paddle.w / 2);
 }
 
@@ -825,6 +835,7 @@ function startGame() {
 }
 
 function goMenu() {
+  clearPointerInput();
   GAME.state = "menu";
   menuButtons = [];
 }
@@ -1005,10 +1016,124 @@ function toggleSound() {
   }
   const hint = document.querySelector(".sound-hint");
   if (hint) hint.textContent = `P — пауза · M — звук: ${AUDIO.enabled ? "вкл" : "выкл"}`;
+  updateTouchControls();
+}
+
+function clearPointerInput() {
+  INPUT.pointerId = null;
+  INPUT.targetX = null;
+}
+
+function togglePause() {
+  if (GAME.state === "playing") GAME.state = "paused";
+  else if (GAME.state === "paused") GAME.state = "playing";
+  clearPointerInput();
+  updateTouchControls();
+}
+
+function primaryAction() {
+  if (GAME.state === "playing" && !GAME.launched) {
+    // Position the ball even if the action arrives before the next draw frame.
+    movePaddle();
+    ball.x = paddle.x;
+    ball.y = paddle.y - 16;
+    GAME.launched = true;
+  } else if (GAME.state === "levelcomplete") nextLevel();
+  else if (GAME.state === "paused") togglePause();
+  else if (["menu", "won", "gameover"].includes(GAME.state)) startGame();
+  else if (GAME.state === "exit") goMenu();
+  updateTouchControls();
+}
+
+function updateTouchControls() {
+  if (!controls) return;
+  const labels = {
+    menu: "Начать игру", playing: GAME.launched ? "Шар в игре" : "Запустить",
+    paused: "Продолжить", levelcomplete: "Следующий уровень",
+    won: "Играть снова", gameover: "Играть снова", exit: "В меню",
+  };
+  const setLabel = (element, label) => {
+    if (element.textContent !== label) element.textContent = label;
+  };
+  setLabel(controls.action, labels[GAME.state]);
+  controls.action.disabled = GAME.state === "playing" && GAME.launched;
+  setLabel(controls.pause, GAME.state === "paused" ? "Продолжить" : "Пауза");
+  controls.pause.disabled = !["playing", "paused"].includes(GAME.state);
+  setLabel(controls.sound, `Звук: ${AUDIO.enabled ? "вкл" : "выкл"}`);
+  controls.sound.setAttribute("aria-pressed", String(AUDIO.enabled));
+}
+
+function setupPointerControls(canvas) {
+  controls = {
+    action: document.getElementById("action-button"),
+    pause: document.getElementById("pause-button"),
+    sound: document.getElementById("sound-button"),
+  };
+  INPUT.touch = window.matchMedia("(any-pointer: coarse)").matches;
+  for (const [button, action] of [
+    [controls.action, primaryAction], [controls.pause, togglePause], [controls.sound, toggleSound],
+  ]) {
+    button.addEventListener("click", () => {
+      initAudio();
+      action();
+    });
+  }
+
+  for (const surface of [canvas, document.getElementById("touch-pad")]) {
+    // CSS scales the canvas; pointer coordinates must use its displayed size.
+    const position = (event) => {
+      const bounds = surface.getBoundingClientRect();
+      return {
+        x: (event.clientX - bounds.left) / bounds.width * GAME.width,
+        y: (event.clientY - bounds.top) / bounds.height * GAME.height,
+      };
+    };
+    surface.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || INPUT.pointerId !== null) return;
+      event.preventDefault();
+      initAudio();
+      if (event.pointerType !== "mouse") {
+        INPUT.touch = true;
+        document.documentElement.classList.add("touch-input");
+      }
+      const point = position(event);
+      if (surface === canvas && ["menu", "levelcomplete", "won", "gameover", "exit"].includes(GAME.state)) {
+        const button = menuButtons.find((item) => pointInRect(point.x, point.y, item));
+        if (button) button.action();
+        return;
+      }
+      if (GAME.state !== "playing" || (surface === canvas && event.pointerType === "mouse")) return;
+      INPUT.pointerId = event.pointerId;
+      INPUT.targetX = point.x;
+      surface.setPointerCapture(event.pointerId);
+    });
+    surface.addEventListener("pointermove", (event) => {
+      if (event.pointerId !== INPUT.pointerId || GAME.state !== "playing") return;
+      INPUT.targetX = position(event).x;
+    });
+    const release = (event) => {
+      if (event.pointerId !== INPUT.pointerId) return;
+      // Apply the last position before clearing a quick gesture between frames.
+      if (GAME.state === "playing") movePaddle();
+      clearPointerInput();
+    };
+    surface.addEventListener("pointerup", release);
+    surface.addEventListener("pointercancel", release);
+    surface.addEventListener("lostpointercapture", release);
+  }
+  const pauseOnLeave = () => {
+    clearPointerInput();
+    if (GAME.state === "playing") togglePause();
+  };
+  window.addEventListener("blur", pauseOnLeave);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) pauseOnLeave();
+  });
 }
 
 function keyPressed() {
   initAudio();
+  if (keyCode === 32 && document.activeElement?.tagName === "BUTTON") return true;
   if ([LEFT_ARROW, RIGHT_ARROW, 32].includes(keyCode)) return false;
 
   if (key === "m" || key === "M" || key === "ь" || key === "Ь") {
@@ -1016,15 +1141,13 @@ function keyPressed() {
     return false;
   }
 
-  if ((key === "p" || key === "P" || key === "з" || key === "З") && GAME.state === "playing") {
-    GAME.state = "paused";
-  } else if ((key === "p" || key === "P" || key === "з" || key === "З") && GAME.state === "paused") {
-    GAME.state = "playing";
-  }
+  if (["p", "P", "з", "З"].includes(key)) togglePause();
   return true;
 }
 
 function keyReleased() {
+  // Let focused HTML buttons handle Space through their native click event.
+  if (document.activeElement?.tagName === "BUTTON") return true;
   if (keyCode === 32 && GAME.state === "levelcomplete") {
     nextLevel();
     return false;
@@ -1034,13 +1157,6 @@ function keyReleased() {
     return false;
   }
   return true;
-}
-
-function mousePressed() {
-  initAudio();
-  if (!["menu", "levelcomplete", "won", "gameover", "exit"].includes(GAME.state)) return;
-  const button = menuButtons.find((item) => pointInRect(mouseX, mouseY, item));
-  if (button) button.action();
 }
 
 function pointInRect(x, y, rectangle) {

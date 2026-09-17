@@ -26,7 +26,16 @@
 
       <section id="game-container" aria-label="Игровое поле"></section>
 
-      <footer>
+      <section class="touch-controls" aria-label="Сенсорное управление">
+        <div id="touch-pad" aria-label="Проведите пальцем, чтобы двигать платформу">← Ведите пальцем здесь →</div>
+        <div class="touch-actions">
+          <button id="action-button" type="button">Начать игру</button>
+          <button id="pause-button" type="button" disabled>Пауза</button>
+          <button id="sound-button" type="button" aria-pressed="true">Звук: вкл</button>
+        </div>
+      </section>
+
+      <footer class="keyboard-hint">
         <span>← →</span> двигаться
         <i></i>
         <span>ПРОБЕЛ</span> запустить шар

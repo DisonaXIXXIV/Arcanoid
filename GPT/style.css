@@ -86,6 +86,78 @@ canvas {
   border-radius: 22px;
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.5), 0 0 50px rgba(74, 48, 180, 0.12);
   outline: none;
+  touch-action: none;
+  user-select: none;
+}
+
+.touch-controls {
+  display: none;
+  width: 100%;
+  max-width: 960px;
+  margin: 12px auto 0;
+}
+
+#touch-pad {
+  display: grid;
+  place-items: center;
+  min-height: 64px;
+  border: 1px solid #514076;
+  border-radius: 12px;
+  background: #171329;
+  color: #c2afff;
+  font-size: 13px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.touch-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.touch-actions button {
+  flex: 1;
+  min-height: 48px;
+  padding: 8px;
+  border: 1px solid #393149;
+  border-radius: 10px;
+  background: #1b1b32;
+  color: #f7f8ff;
+  font: 700 12px "Manrope", system-ui, sans-serif;
+  touch-action: manipulation;
+}
+
+#action-button {
+  background: #825af0;
+}
+
+.touch-actions button:disabled {
+  opacity: 0.45;
+}
+
+.touch-actions button:focus-visible {
+  outline: 2px solid #a7e8ff;
+  outline-offset: 2px;
+}
+
+@media (any-pointer: coarse) {
+  .touch-controls { display: block; }
+  .keyboard-hint, .sound-hint { display: none; }
+}
+
+html.touch-input .touch-controls { display: block; }
+html.touch-input .keyboard-hint,
+html.touch-input .sound-hint { display: none; }
+
+@media (any-pointer: coarse) and (orientation: landscape) and (max-height: 600px) {
+  .app-shell {
+    width: min(100%, calc((100dvh - 185px) * 960 / 620 + 24px));
+    padding: 8px 12px;
+  }
+  .brand-bar { margin-bottom: 8px; }
+  #touch-pad { min-height: 44px; }
 }
 
 footer {
